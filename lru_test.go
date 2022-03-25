@@ -3,6 +3,7 @@ package lru
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLRU(t *testing.T) {
@@ -82,5 +83,35 @@ func TestLRU(t *testing.T) {
 	cache.Clear()
 	if cache.Len() != 0 {
 		t.Errorf("cache.Len() = %v, want 0", cache.Len())
+	}
+}
+
+func TestExpire(t *testing.T) {
+	cache := New(3)
+	cache.Set("a", 1)
+	cache.Set("b", 2, 10*time.Millisecond)
+
+	if cache.Len() != 2 {
+		t.Errorf("cache.Len() = %v, want 2", cache.Len())
+	}
+	if v, ok := cache.Get("a"); !ok || v != 1 {
+		t.Errorf("cache.Get(a) = %v, want 1", v)
+	}
+	if v, ok := cache.Get("b"); !ok || v != 2 {
+		t.Errorf("cache.Get(b) = %v, want 2", v)
+	}
+
+	time.Sleep(100 * time.Millisecond)
+	if cache.Len() != 2 {
+		t.Errorf("cache.Len() = %v, want 2", cache.Len())
+	}
+	if v, ok := cache.Get("a"); !ok || v != 1 {
+		t.Errorf("cache.Get(a) = %v, want 1", v)
+	}
+	if v, ok := cache.Get("b"); ok {
+		t.Errorf("cache.Get(b) = %v, want nil", v)
+	}
+	if cache.Len() != 1 {
+		t.Errorf("cache.Len() = %v, want 1", cache.Len())
 	}
 }

@@ -3,6 +3,7 @@ package lru
 import (
 	"container/list"
 	"sync"
+	"time"
 )
 
 type AtomicInt int64
@@ -21,8 +22,9 @@ type LRU struct {
 }
 
 type entry struct {
-	key   string
-	value interface{}
+	key       string
+	value     interface{}
+	expiresAt time.Time
 }
 
 func New(capacity int) *LRU {
@@ -35,21 +37,39 @@ func New(capacity int) *LRU {
 
 func (l *LRU) Get(key string) (interface{}, bool) {
 	l.mutex.RLock()
-	defer l.mutex.RUnlock()
+	// defer l.mutex.RUnlock()
 	l.Gets.Inc()
 
 	if elem, ok := l.cache[key]; ok {
 		l.Hits.Inc()
+		if expiresAt := elem.Value.(*entry).expiresAt; !expiresAt.IsZero() && expiresAt.Before(time.Now()) {
+			l.mutex.RUnlock()
+
+			l.Delete(key)
+			return nil, false
+		}
+
+		l.mutex.RUnlock()
 		l.list.MoveToFront(elem)
 		return elem.Value.(*entry).value, true
 	}
 
+	l.mutex.RUnlock()
 	return nil, false
 }
 
-func (l *LRU) Set(key string, value interface{}) {
+func (l *LRU) Set(key string, value interface{}, maxAge ...interface{}) {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
+
+	if len(maxAge) > 1 {
+		panic("Too many arguments")
+	}
+
+	var expiresAt time.Time
+	if len(maxAge) == 1 {
+		expiresAt = time.Now().Add(maxAge[0].(time.Duration))
+	}
 
 	if l.cache == nil {
 		l.cache = make(map[string]*list.Element)
@@ -62,7 +82,11 @@ func (l *LRU) Set(key string, value interface{}) {
 		return
 	}
 
-	ele := l.list.PushFront(&entry{key, value})
+	ele := l.list.PushFront(&entry{
+		key:       key,
+		value:     value,
+		expiresAt: expiresAt,
+	})
 	l.cache[key] = ele
 	if l.Capacity != 0 && l.list.Len() > l.Capacity {
 		l.removeOldest()
