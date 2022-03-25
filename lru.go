@@ -21,10 +21,10 @@ type LRU struct {
 	Gets     AtomicInt
 }
 
-type entry struct {
-	key       string
-	value     interface{}
-	expiresAt time.Time
+type Data struct {
+	Key       string
+	Value     interface{}
+	ExpiresAt time.Time
 }
 
 func New(capacity int) *LRU {
@@ -42,7 +42,7 @@ func (l *LRU) Get(key string) (interface{}, bool) {
 
 	if elem, ok := l.cache[key]; ok {
 		l.Hits.Inc()
-		if expiresAt := elem.Value.(*entry).expiresAt; !expiresAt.IsZero() && expiresAt.Before(time.Now()) {
+		if expiresAt := elem.Value.(*Data).ExpiresAt; !expiresAt.IsZero() && expiresAt.Before(time.Now()) {
 			l.mutex.RUnlock()
 
 			l.Delete(key)
@@ -51,7 +51,7 @@ func (l *LRU) Get(key string) (interface{}, bool) {
 
 		l.mutex.RUnlock()
 		l.list.MoveToFront(elem)
-		return elem.Value.(*entry).value, true
+		return elem.Value.(*Data).Value, true
 	}
 
 	l.mutex.RUnlock()
@@ -78,14 +78,14 @@ func (l *LRU) Set(key string, value interface{}, maxAge ...interface{}) {
 
 	if el, ok := l.cache[key]; ok {
 		l.list.MoveToFront(el)
-		el.Value.(*entry).value = value
+		el.Value.(*Data).Value = value
 		return
 	}
 
-	ele := l.list.PushFront(&entry{
-		key:       key,
-		value:     value,
-		expiresAt: expiresAt,
+	ele := l.list.PushFront(&Data{
+		Key:       key,
+		Value:     value,
+		ExpiresAt: expiresAt,
 	})
 	l.cache[key] = ele
 	if l.Capacity != 0 && l.list.Len() > l.Capacity {
@@ -115,8 +115,8 @@ func (l *LRU) removeOldest() {
 	elem := l.list.Back()
 	if elem != nil {
 		l.list.Remove(elem)
-		kv := elem.Value.(*entry)
-		delete(l.cache, kv.key)
+		kv := elem.Value.(*Data)
+		delete(l.cache, kv.Key)
 	}
 }
 
@@ -134,7 +134,7 @@ func (l *LRU) Keys() []string {
 	keys := make([]string, l.list.Len())
 	i := 0
 	for el := l.list.Front(); el != nil; el = el.Next() {
-		keys[i] = el.Value.(*entry).key
+		keys[i] = el.Value.(*Data).Key
 		i += 1
 	}
 
